@@ -43,7 +43,6 @@ export interface PlantParams {
   radiation: number;
   redBlueRatio: number;
   lightIntensity: number;
-  lightDirections: LightDirectionOption[]; // 多个光照方向
   co2: number;
   temp: number;
   humidity: number;
@@ -64,7 +63,6 @@ export const DEFAULT_PARAMS: PlantParams = {
   radiation: 0.2, // 轻微辐射
   redBlueRatio: 1.2, // 略偏向红光
   lightIntensity: 300, // 较强光照
-  lightDirections: ["-x"], // 默认从左侧照射
   co2: 1000, // 较高CO2浓度
   temp: 25, // 适宜温度
   humidity: 65, // 适宜湿度

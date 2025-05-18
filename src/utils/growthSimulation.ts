@@ -1,4 +1,5 @@
 import { GrowthPoint, PlantParams, LightDirectionOption } from "../types/plant";
+import { Vector3 } from "three";
 
 const randomInRange = (min: number, max: number) => {
   return Math.random() * (max - min) + min;
@@ -17,22 +18,25 @@ interface CustomLightSource {
 // 安全计算生长率，确保不会出现 NaN 或无限值
 const calculateGrowthRate = (
   params: PlantParams,
-  type: "stem" | "root"
+  type: "stem" | "root",
+  currentPoint: GrowthPoint
 ): number => {
   try {
-    let rate = 1.0;
+    // 增加基础生长率
+    let rate = type === "stem" ? 1.5 : 1.2; // 茎的生长速率更快
     const factors: Record<string, number> = {};
 
     // 辐射影响
     if (params.radiation > 0.5) {
-      const radiationFactor = Math.max(0, 1 - (params.radiation - 0.5) * 0.1);
+      // 辐射强度越大，生长越无序
+      const radiationFactor = Math.max(0.7, 1 - (params.radiation - 0.5) * 0.1);
       rate *= radiationFactor;
       factors.radiation = radiationFactor;
     } else {
       factors.radiation = 1.0;
     }
 
-    if (params.radiation > 1.5) {
+    if (params.radiation > 2.0) {
       console.log("高辐射导致生长停止");
       return 0;
     }
@@ -59,8 +63,8 @@ const calculateGrowthRate = (
 
     // 光照强度影响
     const lightFactor = Math.min(
-      1.2,
-      Math.max(0.5, params.lightIntensity / 250)
+      1.5,
+      Math.max(0.7, params.lightIntensity / 200)
     );
 
     // 根和茎对光照的响应不同
@@ -251,7 +255,7 @@ export const calculateDirectionFromLightSource = (
   };
 };
 
-// 为新分支分配光照影响（自定义光源或标准方向）
+// 为新分支分配光照影响（只使用自定义光源）
 export const assignInfluenceToNewBranch = (
   params: PlantParams,
   branchId: number,
@@ -259,20 +263,13 @@ export const assignInfluenceToNewBranch = (
   currentDay: number,
   customLights: CustomLightSource[] = []
 ): { lightDirection: LightDirectionOption; customLightId?: number } => {
-  // 获取可用的光照方向
-  const availableDirections = params.lightDirections;
-
   // 筛选出当前可用的自定义光源（当前天数 >= 光源启动日）
   const availableCustomLights = customLights.filter(
     (light) => currentDay >= light.startDay
   );
 
-  // 创建总的影响源（标准方向 + 可用的自定义光源）
-  const totalStandardDirections = availableDirections.length;
-  const totalAvailableCustomLights = availableCustomLights.length;
-
-  if (totalStandardDirections === 0 && totalAvailableCustomLights === 0) {
-    // 如果没有光照方向和可用的自定义光源，则默认使用顶部光照
+  // 如果没有可用的自定义光源，则默认使用顶部光照
+  if (availableCustomLights.length === 0) {
     return { lightDirection: "+z" };
   }
 
@@ -280,59 +277,20 @@ export const assignInfluenceToNewBranch = (
   const branchCount = type === "stem" ? params.stemCount : params.rootCount;
 
   // 确保每个光源至少有一个分支
-  // 如果分支数大于等于影响源总数，使用循环分配保证每个光源至少有一个分支
-  if (branchCount >= totalStandardDirections + totalAvailableCustomLights) {
-    const totalInfluences =
-      totalStandardDirections + totalAvailableCustomLights;
-    const influenceIndex = branchId % totalInfluences;
-
-    // 分配给标准光照方向
-    if (influenceIndex < totalStandardDirections) {
-      return {
-        lightDirection: availableDirections[influenceIndex],
-      };
-    }
-    // 分配给可用的自定义光源
-    else {
-      const customLightIndex = influenceIndex - totalStandardDirections;
-      return {
-        lightDirection: "+z", // 默认向上方向用于微重力等计算
-        customLightId: availableCustomLights[customLightIndex].id,
-      };
-    }
-  }
-  // 如果分支数小于影响源总数，则优先分配给最重要的几个光源
-  else {
-    // 权重分配策略：可用的自定义光源优先，然后是基本光照方向
-    const priorityList: { type: "standard" | "custom"; index: number }[] = [];
-
-    // 先添加所有可用的自定义光源
-    for (let i = 0; i < totalAvailableCustomLights; i++) {
-      priorityList.push({ type: "custom", index: i });
-    }
-
-    // 再添加标准方向
-    for (let i = 0; i < totalStandardDirections; i++) {
-      priorityList.push({ type: "standard", index: i });
-    }
-
-    // 从优先列表中选择（如果优先列表超出分支数，只取前几个）
-    const maxIndex = Math.min(branchCount - 1, priorityList.length - 1);
-    const selection =
-      branchId <= maxIndex
-        ? priorityList[branchId]
-        : priorityList[branchId % priorityList.length];
-
-    if (selection.type === "standard") {
-      return {
-        lightDirection: availableDirections[selection.index],
-      };
-    } else {
-      return {
-        lightDirection: "+z",
-        customLightId: availableCustomLights[selection.index].id,
-      };
-    }
+  if (branchCount >= availableCustomLights.length) {
+    const customLightIndex = branchId % availableCustomLights.length;
+    return {
+      lightDirection: "+z", // 默认向上方向用于微重力等计算
+      customLightId: availableCustomLights[customLightIndex].id,
+    };
+  } else {
+    // 如果分支数小于光源数，则优先分配给前几个光源
+    const maxIndex = Math.min(branchCount - 1, availableCustomLights.length - 1);
+    const selection = branchId <= maxIndex ? branchId : branchId % availableCustomLights.length;
+    return {
+      lightDirection: "+z",
+      customLightId: availableCustomLights[selection].id,
+    };
   }
 };
 
@@ -343,28 +301,8 @@ const assignLightDirectionToBranch = (
   totalBranches: number,
   type: "stem" | "root"
 ): LightDirectionOption => {
-  // 获取可用的光照方向
-  const availableDirections = params.lightDirections;
-
-  if (availableDirections.length === 0) {
-    // 如果没有光照方向，则默认使用顶部光照
-    return "+z";
-  } else if (availableDirections.length === 1) {
-    // 如果只有一个光照方向，所有分支都使用该方向
-    return availableDirections[0];
-  } else {
-    // 如果有多个光照方向，则平均分配
-    // 对于茎，平均分配到不同方向，使植物向多个光源方向生长
-    if (type === "stem") {
-      // 循环分配光照方向
-      const directionIndex = branchId % availableDirections.length;
-      return availableDirections[directionIndex];
-    } else {
-      // 对于根，主要是背光生长，也平均分配以增加多样性
-      const directionIndex = branchId % availableDirections.length;
-      return availableDirections[directionIndex];
-    }
-  }
+  // 由于移除了lightDirections，现在统一使用顶部光照
+  return "+z";
 };
 
 // 计算微重力下根系的生长变化
@@ -456,226 +394,131 @@ export const calculateNextGrowthPoint = (
   currentPoint: GrowthPoint,
   params: PlantParams,
   customLights: CustomLightSource[] = [],
-  currentDay: number = currentPoint.day
+  currentDay: number
 ): GrowthPoint => {
-  try {
-    const type = currentPoint.type;
-    const branchId = currentPoint.branchId;
-    const growthRate = calculateGrowthRate(params, type);
+  const { type, branchId } = currentPoint;
+  let xOffset = 0;
+  let yOffset = 0;
+  let zOffset = 0;
 
-    console.log(
-      `[Day ${currentDay}, Branch ${branchId} (${type})] Calculating next point. Base growthRate: ${growthRate.toFixed(
-        3
-      )}`
-    );
+  // 计算基础生长率
+  const baseGrowth = calculateGrowthRate(params, type, currentPoint);
 
-    const baseGrowth = type === "stem" ? 0.8 * growthRate : 0.6 * growthRate;
-    let xOffset = 0,
-      yOffset = 0,
-      zOffset = 0;
+  // 处理所有激活的光源的影响
+  const activeLights = customLights.filter(light => currentDay >= light.startDay);
+  
+  if (activeLights.length > 0) {
+    // 计算所有光源的综合影响
+    let totalX = 0;
+    let totalY = 0;
+    let totalZ = 0;
+    let totalIntensity = 0;
 
-    const activeCustomLights = customLights.filter(
-      (light) => currentDay >= light.startDay
-    );
-
-    if (activeCustomLights.length > 0) {
-      console.log(
-        `  Active custom lights on day ${currentDay}: ${activeCustomLights
-          .map((l) => l.id)
-          .join(", ")}`
+    activeLights.forEach(lightSource => {
+      const direction = calculateDirectionFromLightSource(
+        currentPoint,
+        lightSource,
+        currentDay
       );
-      let totalEffectX = 0;
-      let totalEffectY = 0;
-      let totalEffectZ = 0;
-      let totalIntensity = 0;
+      
+      // 根据光源强度加权
+      const weight = direction.intensity;
+      totalX += direction.x * weight;
+      totalY += direction.y * weight;
+      totalZ += direction.z * weight;
+      totalIntensity += weight;
+    });
 
-      for (const light of activeCustomLights) {
-        console.log(
-          `  Calculating effect of CustomLight ${light.id} (StartDay ${light.startDay}, Intensity ${light.intensity})`
-        );
-        const lightEffect = calculateDirectionFromLightSource(
-          currentPoint,
-          light,
-          currentDay
-        );
-        totalEffectX += lightEffect.x;
-        totalEffectY += lightEffect.y;
-        totalEffectZ += lightEffect.z;
-        totalIntensity += lightEffect.intensity;
-        console.log(
-          `    Light ${light.id} effect: x=${lightEffect.x.toFixed(
-            3
-          )}, y=${lightEffect.y.toFixed(3)}, z=${lightEffect.z.toFixed(
-            3
-          )}, intensity=${lightEffect.intensity.toFixed(3)}`
-        );
-      }
-
-      const activationFactor = 3.0;
-      xOffset = totalEffectX * activationFactor;
-      yOffset = totalEffectY * activationFactor;
-      zOffset = totalEffectZ * activationFactor;
-      console.log(
-        `  Total CustomLight Effect (after factor ${activationFactor}): x=${xOffset.toFixed(
-          3
-        )}, y=${yOffset.toFixed(3)}, z=${zOffset.toFixed(
-          3
-        )}, totalIntensitySum=${totalIntensity.toFixed(3)}`
-      );
+    // 如果有光源影响，计算平均方向
+    if (totalIntensity > 0) {
+      const avgX = totalX / totalIntensity;
+      const avgY = totalY / totalIntensity;
+      const avgZ = totalZ / totalIntensity;
+      
+      // 增强光照方向的影响
+      xOffset = avgX * baseGrowth * 2.0;
+      yOffset = avgY * baseGrowth * 2.0;
+      zOffset = avgZ * baseGrowth * 2.0;
     } else {
-      const standardLightDirection =
-        currentPoint.lightInfluence &&
-        !currentPoint.lightInfluence.startsWith("custom:")
-          ? (currentPoint.lightInfluence as LightDirectionOption)
-          : params.lightDirections[branchId % params.lightDirections.length] ||
-            "+z";
-
-      console.log(
-        `  No active custom lights. Using StandardLight direction: ${standardLightDirection}`
-      );
-      const effect = calculateSingleLightDirectionEffect(
-        growthRate * 1.2,
-        standardLightDirection,
-        type
-      );
-      xOffset = effect.xOffset;
-      yOffset = effect.yOffset;
-      zOffset = effect.zOffset;
-      console.log(
-        `    StandardLight Effect: x=${xOffset.toFixed(3)}, y=${yOffset.toFixed(
-          3
-        )}, z=${zOffset.toFixed(3)}`
-      );
+      // 如果没有光源影响，使用默认向上/向下生长
+      zOffset = type === "stem" ? baseGrowth * 1.2 : -baseGrowth * 1.2;
     }
-
-    if (type === "stem") {
-      if (params.redBlueRatio < 1) {
-        const blueEffect = 2 - params.redBlueRatio;
-        xOffset *= blueEffect;
-        yOffset *= blueEffect;
-        zOffset *= 0.8;
-      } else {
-        zOffset *= Math.min(1.3, params.redBlueRatio);
-      }
-      if (params.microgravity) {
-        const { exaggerationFactor } = params;
-        const stiffnessFactor = 0.3 + 0.4 * (1 - exaggerationFactor);
-        const bendingFrequency = 2 + 4 * exaggerationFactor;
-        const phaseOffset = (Math.PI * 2 * branchId) / params.stemCount;
-        const dayFactor = currentDay * 0.2;
-        const wobbleX =
-          Math.sin(dayFactor * bendingFrequency + phaseOffset) *
-          (1 - stiffnessFactor) *
-          0.3;
-        const wobbleY =
-          Math.cos(dayFactor * bendingFrequency + phaseOffset * 1.5) *
-          (1 - stiffnessFactor) *
-          0.3;
-        xOffset += wobbleX * (1 + exaggerationFactor);
-        yOffset += wobbleY * (1 + exaggerationFactor);
-        if (
-          Math.abs(xOffset) < 0.1 &&
-          Math.abs(yOffset) < 0.1 &&
-          activeCustomLights.length === 0
-        ) {
-          zOffset +=
-            baseGrowth *
-            0.5 *
-            (params.microgravity ? 1 + exaggerationFactor * 0.5 : 1);
-        }
-      } else {
-        if (
-          activeCustomLights.length === 0 &&
-          (!params.lightDirections ||
-            params.lightDirections.every((dir) => !dir.includes("z")))
-        ) {
-          zOffset += baseGrowth * 0.7;
-        }
-      }
-    } else {
-      // root
-      if (params.redBlueRatio < 1) {
-        const blueEffect = 1.5 - params.redBlueRatio * 0.5;
-        xOffset *= blueEffect * 0.7;
-        yOffset *= blueEffect * 0.7;
-      }
-      if (params.microgravity) {
-        const { exaggerationFactor } = params;
-        const bendingAngle = (Math.PI / 180) * (45 + 30 * exaggerationFactor);
-        const phaseOffset = (Math.PI * 2 * branchId) / params.rootCount;
-        const theta =
-          bendingAngle * Math.sin(phaseOffset + Math.random() * Math.PI);
-        const phi = 2 * Math.PI * Math.random();
-        const varianceFactor = 0.5 + 0.5 * exaggerationFactor;
-        const magnitudeFactor = 0.3 + 0.7 * Math.random() * exaggerationFactor;
-        xOffset +=
-          Math.sin(theta) * Math.cos(phi) * varianceFactor * magnitudeFactor;
-        yOffset +=
-          Math.sin(theta) * Math.sin(phi) * varianceFactor * magnitudeFactor;
-        if (
-          Math.abs(xOffset) < 0.1 &&
-          Math.abs(yOffset) < 0.1 &&
-          activeCustomLights.length === 0
-        ) {
-          zOffset -=
-            baseGrowth *
-            0.5 *
-            (params.microgravity ? 1 + exaggerationFactor * 0.3 : 1);
-        }
-      } else {
-        if (
-          activeCustomLights.length === 0 &&
-          (!params.lightDirections ||
-            params.lightDirections.every((dir) => dir !== "-z"))
-        ) {
-          zOffset -= baseGrowth * 0.7;
-        }
-      }
-    }
-
-    xOffset += randomInRange(-0.05, 0.05);
-    yOffset += randomInRange(-0.05, 0.05);
-    const zDisturbance = type === "stem" ? 0.05 : 0.08;
-    zOffset += randomInRange(-zDisturbance, zDisturbance);
-
-    const nextPoint = {
-      x: currentPoint.x + xOffset,
-      y: currentPoint.y + yOffset,
-      z: currentPoint.z + zOffset,
-      day: currentPoint.day + 1,
-      type: currentPoint.type,
-      branchId: currentPoint.branchId,
-      lightInfluence: currentPoint.lightInfluence,
-    };
-    console.log(
-      `  New Point for Branch ${branchId}: x=${nextPoint.x.toFixed(
-        3
-      )}, y=${nextPoint.y.toFixed(3)}, z=${nextPoint.z.toFixed(3)} (Day ${
-        nextPoint.day
-      })`
+  } else {
+    // 处理标准光照方向
+    const lightDirection = currentPoint.lightInfluence as LightDirectionOption;
+    const offsets = calculateSingleLightDirectionEffect(
+      baseGrowth,
+      lightDirection,
+      type
     );
-
-    if (isNaN(nextPoint.x) || !isFinite(nextPoint.x))
-      nextPoint.x = currentPoint.x;
-    if (isNaN(nextPoint.y) || !isFinite(nextPoint.y))
-      nextPoint.y = currentPoint.y;
-    if (isNaN(nextPoint.z) || !isFinite(nextPoint.z))
-      nextPoint.z = currentPoint.z + (type === "stem" ? 0.5 : -0.5);
-
-    return nextPoint;
-  } catch (e) {
-    const errorMessage = `计算下一个生长点时出错 (Branch ${currentPoint.branchId}, Day ${currentDay}):`;
-    console.error(errorMessage, e);
-    return {
-      x: currentPoint.x,
-      y: currentPoint.y,
-      z: currentPoint.z + (currentPoint.type === "stem" ? 0.5 : -0.5),
-      day: currentPoint.day + 1,
-      type: currentPoint.type,
-      branchId: currentPoint.branchId,
-      lightInfluence: currentPoint.lightInfluence,
-    };
+    // 增强光照方向的影响
+    xOffset = offsets.xOffset * 1.5;
+    yOffset = offsets.yOffset * 1.5;
+    zOffset = offsets.zOffset * 1.5;
   }
+
+  // 增强辐射带来的扰动效果
+  if (params.radiation > 0.5) {
+    // 辐射强度越大，扰动越大
+    const radiationFactor = Math.min(0.8, (params.radiation - 0.5) * 0.6); // 增加扰动范围
+    
+    // 添加随机扰动，但保持主要生长方向
+    const randomFactor = Math.random() * radiationFactor;
+    
+    // 根据辐射强度调整扰动范围
+    const maxOffset = 0.3 + radiationFactor * 0.4; // 最大扰动范围从0.3到0.7
+    
+    // 添加随机扰动
+    xOffset += randomInRange(-maxOffset, maxOffset) * randomFactor * baseGrowth;
+    yOffset += randomInRange(-maxOffset, maxOffset) * randomFactor * baseGrowth;
+    zOffset += randomInRange(-maxOffset, maxOffset) * randomFactor * baseGrowth;
+    
+    // 在辐射强度较高时，增加生长的不稳定性
+    if (params.radiation > 1.0) {
+      const instabilityFactor = (params.radiation - 1.0) * 0.5;
+      xOffset *= (1 + randomInRange(-instabilityFactor, instabilityFactor));
+      yOffset *= (1 + randomInRange(-instabilityFactor, instabilityFactor));
+      zOffset *= (1 + randomInRange(-instabilityFactor, instabilityFactor));
+    }
+  }
+
+  if (params.radiation > 2.0) {
+    console.log("高辐射导致生长停止");
+    return currentPoint;
+  }
+
+  // 应用微重力效果
+  if (params.microgravity) {
+    const offsets = type === "stem"
+      ? applyStemMicrogravityEffect(
+          { xOffset, yOffset, zOffset },
+          params,
+          branchId,
+          currentDay,
+          currentPoint.lightInfluence as LightDirectionOption
+        )
+      : applyRootMicrogravityEffect(
+          { xOffset, yOffset, zOffset },
+          params,
+          branchId,
+          currentPoint.lightInfluence as LightDirectionOption
+        );
+    xOffset = offsets.xOffset;
+    yOffset = offsets.yOffset;
+    zOffset = offsets.zOffset;
+  }
+
+  const nextPoint = {
+    x: currentPoint.x + xOffset,
+    y: currentPoint.y + yOffset,
+    z: currentPoint.z + zOffset,
+    day: currentPoint.day + 1,
+    type: currentPoint.type,
+    branchId: currentPoint.branchId,
+    lightInfluence: currentPoint.lightInfluence,
+  };
+
+  return nextPoint;
 };
 
 // 创建初始生长点（根系和茎系）

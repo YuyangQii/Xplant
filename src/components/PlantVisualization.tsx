@@ -8,7 +8,7 @@ import {
   Stats,
   Environment,
 } from "@react-three/drei";
-import { Vector3, Color } from "three";
+import { Vector3, Color, CatmullRomCurve3 } from "three";
 import { GrowthPoint } from "../types/plant";
 
 // 添加自定义光源结构
@@ -170,44 +170,49 @@ const GrowthPath: React.FC<{
   branchId: number;
   totalBranches: number;
 }> = ({ points, type, branchId, totalBranches }) => {
-  // 为每个分支创建特定的颜色
+  // 创建高密度平滑曲线
+  const curvePoints = useMemo(() => {
+    if (points.length < 2) return points;
+    const curve = new CatmullRomCurve3(points);
+    return curve.getPoints(Math.max(points.length * 8, 100));
+  }, [points]);
+
+  // 渐变色数组与曲线点数量一致
   const pathColors = useMemo(() => {
-    const colors = points.map((_, index) => {
-      const progress = index / Math.max(1, points.length - 1);
-
+    const colors = [];
+    for (let i = 0; i < curvePoints.length; i++) {
+      const progress = i / Math.max(1, curvePoints.length - 1);
       if (type === "stem") {
-        // 茎的颜色：从青色到亮绿
-        const hue = 0.4 - (branchId / totalBranches) * 0.2; // 从0.4到0.2的色相范围
+        const hue = 0.4 - (branchId / totalBranches) * 0.2;
         const saturation = 0.8;
-        const lightness = 0.5 + progress * 0.3; // 变亮
-        return new Color().setHSL(hue, saturation, lightness);
+        const lightness = 0.5 + progress * 0.3;
+        colors.push(new Color().setHSL(hue, saturation, lightness));
       } else {
-        // 根的颜色：从棕褐到橙色
-        const hue = 0.05 + (branchId / totalBranches) * 0.1; // 从0.05到0.15的色相范围
-        const saturation = 0.7 - progress * 0.3; // 减少饱和度
-        const lightness = 0.3 + progress * 0.2; // 变亮
-        return new Color().setHSL(hue, saturation, lightness);
+        const hue = 0.05 + (branchId / totalBranches) * 0.1;
+        const saturation = 0.7 - progress * 0.3;
+        const lightness = 0.3 + progress * 0.2;
+        colors.push(new Color().setHSL(hue, saturation, lightness));
       }
-    });
-
+    }
     return colors;
-  }, [points.length, type, branchId, totalBranches]);
+  }, [curvePoints.length, type, branchId, totalBranches]);
 
-  // 茎和根的线宽不同
-  const lineWidth = type === "stem" ? 2.5 : 2;
-
-  // 末端点的大小和颜色也不同
+  const lineWidth = type === "stem" ? 3 : 2.5;
   const tipSize = type === "stem" ? 0.15 : 0.12;
   const tipColor = type === "stem" ? "#10b981" : "#d97706";
   const emissiveColor = type === "stem" ? "#34d399" : "#fdba74";
 
   return (
     <>
-      {points.length > 1 && (
-        <Line points={points} vertexColors={pathColors} lineWidth={lineWidth} />
+      {curvePoints.length > 1 && (
+        <Line 
+          points={curvePoints} 
+          vertexColors={pathColors}
+          lineWidth={lineWidth}
+        />
       )}
-      {points.length > 0 && (
-        <mesh position={points[points.length - 1]}>
+      {curvePoints.length > 0 && (
+        <mesh position={curvePoints[curvePoints.length - 1]}>
           <sphereGeometry args={[tipSize]} />
           <meshStandardMaterial
             color={tipColor}
@@ -585,7 +590,7 @@ const Legend: React.FC<{ customLightsCount?: number }> = ({
   return (
     <group position={[8, 8, 0]}>
       <mesh position={[0, 0, 0]}>
-        <planeGeometry args={[4, customLightsCount > 0 ? 2.8 : 2.2]} />
+        <planeGeometry args={[4, 2.2]} />
         <meshBasicMaterial color="#ffffff" transparent opacity={0.7} />
       </mesh>
 
@@ -635,46 +640,6 @@ const Legend: React.FC<{ customLightsCount?: number }> = ({
       >
         根系统
       </Text>
-
-      {/* 光照方向 */}
-      <Line
-        points={[
-          [-1.5, -0.7, 0.1],
-          [-0.5, -0.7, 0.1],
-        ]}
-        color="#f59e0b"
-        lineWidth={3}
-      />
-      <Text
-        position={[0.5, -0.7, 0.1]}
-        color="#000000"
-        fontSize={0.25}
-        anchorX="left"
-      >
-        光照方向
-      </Text>
-
-      {/* 自定义光源图例 - 仅当有自定义光源时显示 */}
-      {customLightsCount > 0 && (
-        <>
-          <Line
-            points={[
-              [-1.5, -1.2, 0.1],
-              [-0.5, -1.2, 0.1],
-            ]}
-            color="#ffcc00"
-            lineWidth={3}
-          />
-          <Text
-            position={[0.5, -1.2, 0.1]}
-            color="#000000"
-            fontSize={0.25}
-            anchorX="left"
-          >
-            自定义光源 ({customLightsCount})
-          </Text>
-        </>
-      )}
     </group>
   );
 };

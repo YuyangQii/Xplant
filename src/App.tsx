@@ -316,41 +316,44 @@ const App: React.FC = () => {
 
       if (needsRegeneration) {
         console.log(`因光源状态改变，从第 ${currentDay} 天重新生成路径`);
+        
+        // 先更新当前天数，避免动画跳动
+        setCurrentDay(nextDay);
+        
         // 保留当前天数及之前的点，删除之后的点
-        const currentPoints = points.filter((p) => p.day <= currentDay);
+        const currentPoints = points.filter((p) => p.day <= nextDay);
+        setPoints(currentPoints);
 
-        // 从当前天继续生成剩余天数的点
-        setTimeout(() => {
-          setPoints(currentPoints); // 先更新点以移除旧的未来路径
-          const remainingDays = simulationDays - currentDay;
-          if (remainingDays > 0) {
-            console.log(
-              `从 ${currentDay} 天开始，重新生成 ${remainingDays} 天的点`
-            );
-            const newPoints = generateNewPointsFromDay(
-              currentDay,
-              remainingDays
-            );
-            setPoints([...currentPoints, ...newPoints]);
-            console.log(
-              `重新生成后，总点数: ${currentPoints.length + newPoints.length}`
-            );
-          }
-        }, 0); // 使用setTimeout确保状态更新和重新渲染
+        // 从新当前天继续生成剩余天数的点
+        const remainingDays = simulationDays - nextDay;
+        if (remainingDays > 0) {
+          console.log(
+            `从 ${nextDay} 天开始，重新生成 ${remainingDays} 天的点`
+          );
+          const newPoints = generateNewPointsFromDay(
+            nextDay,
+            remainingDays
+          );
+          setPoints((prevPoints) => [...prevPoints, ...newPoints]);
+          console.log(
+            `重新生成后，总点数: ${currentPoints.length + newPoints.length}`
+          );
+        }
+      } else {
+        // 如果没有光源状态改变，正常更新天数
+        timer = setTimeout(() => {
+          setCurrentDay((prev) => {
+            const nextVal = prev + 1;
+            // 如果到达末尾，自动停止
+            if (nextVal >= maxDay) {
+              setIsPlaying(false);
+              console.log("播放结束");
+              return maxDay;
+            }
+            return nextVal;
+          });
+        }, 50); // 动画速度
       }
-
-      timer = setTimeout(() => {
-        setCurrentDay((prev) => {
-          const nextVal = prev + 1;
-          // 如果到达末尾，自动停止
-          if (nextVal >= maxDay) {
-            setIsPlaying(false);
-            console.log("播放结束");
-            return maxDay;
-          }
-          return nextVal;
-        });
-      }, 50); // 动画速度
     }
 
     return () => {
@@ -467,9 +470,9 @@ const App: React.FC = () => {
   // 处理当前日变化的函数
   const handleDayChange = (_event: Event, value: number | number[]) => {
     const newDay = Array.isArray(value) ? value[0] : value;
+    const oldDay = currentDay;
 
     // 检查是否跨过了任何光源的启动日
-    const oldDay = currentDay;
     const crossesActivationDay = customLights.some(
       (light) =>
         (oldDay < light.startDay && newDay >= light.startDay) ||
@@ -480,21 +483,23 @@ const App: React.FC = () => {
     if (crossesActivationDay) {
       console.log(`滑动经过了光源启动日，从第 ${newDay} 天重新生成路径`);
 
+      // 先更新当前天数，避免进度条跳动
+      setCurrentDay(newDay);
+
       // 保留当前天数及之前的点，删除之后的点
       const currentPoints = points.filter((p) => p.day <= newDay);
       setPoints(currentPoints);
 
       // 从新当前天继续生成剩余天数的点
-      setTimeout(() => {
-        const remainingDays = simulationDays - newDay;
-        if (remainingDays > 0) {
-          const newPoints = generateNewPointsFromDay(newDay, remainingDays);
-          setPoints([...currentPoints, ...newPoints]);
-        }
-      }, 0);
+      const remainingDays = simulationDays - newDay;
+      if (remainingDays > 0) {
+        const newPoints = generateNewPointsFromDay(newDay, remainingDays);
+        setPoints((prevPoints) => [...prevPoints, ...newPoints]);
+      }
+    } else {
+      // 如果没有跨过启动日，直接更新天数
+      setCurrentDay(newDay);
     }
-
-    setCurrentDay(newDay);
   };
 
   return (

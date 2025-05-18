@@ -242,43 +242,6 @@ const RadioButtonGroup = muiStyled(RadioGroup)(({ theme }) => ({
   },
 }));
 
-// 光照方向选项分组
-const lightDirectionGroups = [
-  {
-    label: "主轴方向",
-    options: [
-      { value: "+x" as LightDirectionOption, label: "右侧 (+X)" },
-      { value: "-x" as LightDirectionOption, label: "左侧 (-X)" },
-      { value: "+y" as LightDirectionOption, label: "前方 (+Y)" },
-      { value: "-y" as LightDirectionOption, label: "后方 (-Y)" },
-      { value: "+z" as LightDirectionOption, label: "上方 (+Z)" },
-      { value: "-z" as LightDirectionOption, label: "下方 (-Z)" },
-    ],
-  },
-  {
-    label: "水平斜向",
-    options: [
-      { value: "+x+y" as LightDirectionOption, label: "右前 (+X+Y)" },
-      { value: "+x-y" as LightDirectionOption, label: "右后 (+X-Y)" },
-      { value: "-x+y" as LightDirectionOption, label: "左前 (-X+Y)" },
-      { value: "-x-y" as LightDirectionOption, label: "左后 (-X-Y)" },
-    ],
-  },
-  {
-    label: "垂直斜向",
-    options: [
-      { value: "+x+z" as LightDirectionOption, label: "右上 (+X+Z)" },
-      { value: "+x-z" as LightDirectionOption, label: "右下 (+X-Z)" },
-      { value: "-x+z" as LightDirectionOption, label: "左上 (-X+Z)" },
-      { value: "-x-z" as LightDirectionOption, label: "左下 (-X-Z)" },
-      { value: "+y+z" as LightDirectionOption, label: "前上 (+Y+Z)" },
-      { value: "+y-z" as LightDirectionOption, label: "前下 (+Y-Z)" },
-      { value: "-y+z" as LightDirectionOption, label: "后上 (-Y+Z)" },
-      { value: "-y-z" as LightDirectionOption, label: "后下 (-Y-Z)" },
-    ],
-  },
-];
-
 // 自定义光源组件接口
 interface CustomLightSource {
   id: number;
@@ -349,30 +312,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
   >([]);
   const [nextLightId, setNextLightId] = useState(1);
   const [showCustomLightPanel, setShowCustomLightPanel] = useState(false);
-
-  // 处理光照方向变化
-  const handleDirectionChange = (
-    option: LightDirectionOption,
-    isChecked: boolean
-  ) => {
-    let newDirections = [...params.lightDirections];
-
-    if (isChecked && !newDirections.includes(option)) {
-      newDirections.push(option);
-    } else if (!isChecked) {
-      newDirections = newDirections.filter((dir) => dir !== option);
-    }
-
-    // 确保至少保留一个光照方向
-    if (newDirections.length === 0) {
-      return;
-    }
-
-    onParamsChange({
-      ...params,
-      lightDirections: newDirections,
-    });
-  };
 
   // 处理数值类型参数变化
   const handleNumberChange =
@@ -609,88 +548,6 @@ const ControlPanel: React.FC<ControlPanelProps> = ({
 
       <ControlGroup>
         <ControlTitle variant="h3">光照条件</ControlTitle>
-
-        <Typography variant="body2" gutterBottom sx={{ mb: 1 }}>
-          光照方向（可多选）
-        </Typography>
-
-        <Box sx={{ mb: 1 }}>
-          <Typography variant="caption" color="text.secondary">
-            坐标系说明：X轴(左右)、Y轴(前后)、Z轴(上下)，"+"表示正方向，"-"表示负方向
-          </Typography>
-        </Box>
-
-        <Box sx={{ mb: 3, display: "flex", flexDirection: "column", gap: 1 }}>
-          <Typography variant="caption" fontWeight="bold">
-            主轴方向
-          </Typography>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-            {[
-              { value: "+x" as LightDirectionOption, label: "+X (右侧)" },
-              { value: "-x" as LightDirectionOption, label: "-X (左侧)" },
-              { value: "+y" as LightDirectionOption, label: "+Y (前方)" },
-              { value: "-y" as LightDirectionOption, label: "-Y (后方)" },
-              { value: "+z" as LightDirectionOption, label: "+Z (上方)" },
-              { value: "-z" as LightDirectionOption, label: "-Z (下方)" },
-            ].map((option) => (
-              <FormControlLabel
-                key={option.value}
-                control={
-                  <Checkbox
-                    size="small"
-                    checked={params.lightDirections.includes(option.value)}
-                    onChange={(e) =>
-                      handleDirectionChange(option.value, e.target.checked)
-                    }
-                  />
-                }
-                label={option.label}
-                sx={{
-                  "& .MuiFormControlLabel-label": {
-                    fontSize: "0.85rem",
-                    color: "var(--text-color)",
-                  },
-                }}
-              />
-            ))}
-          </Box>
-
-          <Typography variant="caption" fontWeight="bold" sx={{ mt: 1 }}>
-            对角线方向
-          </Typography>
-          <Box sx={{ display: "flex", flexWrap: "wrap", gap: 1 }}>
-            {[
-              { value: "+x+z" as LightDirectionOption, label: "+X+Z (右上)" },
-              { value: "-x+z" as LightDirectionOption, label: "-X+Z (左上)" },
-              { value: "+y+z" as LightDirectionOption, label: "+Y+Z (前上)" },
-              { value: "-y+z" as LightDirectionOption, label: "-Y+Z (后上)" },
-              { value: "+x+y" as LightDirectionOption, label: "+X+Y (右前)" },
-              { value: "-x+y" as LightDirectionOption, label: "-X+Y (左前)" },
-              { value: "+x-y" as LightDirectionOption, label: "+X-Y (右后)" },
-              { value: "-x-y" as LightDirectionOption, label: "-X-Y (左后)" },
-            ].map((option) => (
-              <FormControlLabel
-                key={option.value}
-                control={
-                  <Checkbox
-                    size="small"
-                    checked={params.lightDirections.includes(option.value)}
-                    onChange={(e) =>
-                      handleDirectionChange(option.value, e.target.checked)
-                    }
-                  />
-                }
-                label={option.label}
-                sx={{
-                  "& .MuiFormControlLabel-label": {
-                    fontSize: "0.85rem",
-                    color: "var(--text-color)",
-                  },
-                }}
-              />
-            ))}
-          </Box>
-        </Box>
 
         <Box sx={{ mt: 3, mb: 3 }}>
           <Box
